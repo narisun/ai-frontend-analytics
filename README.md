@@ -22,6 +22,8 @@ The dev server proxies `/api/v1/*` requests to the analytics-agent backend via `
 
 Set `ANALYTICS_AGENT_URL` to override the default backend URL (defaults to `http://analytics-agent:8000` for Docker).
 
+Set `ENVIRONMENT` (one of `dev` | `staging` | `prod`; defaults to `dev`) — the dashboard stamps this on every outbound call to the agent as `X-Environment`. The agent's auth dependency rejects requests whose `X-Environment` doesn't match its own (L3 strict environment isolation, required from SDK 0.6.0).
+
 ## Docker
 
 ```bash

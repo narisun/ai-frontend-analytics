@@ -16,6 +16,12 @@ import { auth0 } from "@/lib/auth0";
 const AGENT_URL = process.env.ANALYTICS_AGENT_URL || "http://analytics-agent:8000";
 const REQUEST_TIMEOUT_MS = 120_000;
 
+// L3 environment isolation. Stamped on every internal HTTP call so the
+// analytics-agent's auth dependency (and any downstream MCP) accepts the
+// request. Mismatch with the backend's own ENVIRONMENT returns 403.
+// Required from SDK 0.6.0 onward.
+const ENVIRONMENT = process.env.ENVIRONMENT || "dev";
+
 export async function POST(req: Request) {
   // Extract authenticated user from Auth0 session
   const session = await auth0.getSession();
@@ -35,6 +41,8 @@ export async function POST(req: Request) {
       ...(process.env.INTERNAL_API_KEY && {
         Authorization: `Bearer ${process.env.INTERNAL_API_KEY}`,
       }),
+      // L3 strict environment isolation
+      "X-Environment": ENVIRONMENT,
       // Forward authenticated user identity to the agent
       "X-User-Email": userEmail,
       "X-User-Role": userRole,
