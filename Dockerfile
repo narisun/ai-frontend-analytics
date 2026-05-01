@@ -28,6 +28,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV ANALYTICS_AGENT_URL=http://analytics-agent:8000
+# L3 strict environment isolation — stamped on every backend call.
+# Override at deploy time (dev | staging | prod).
+ENV ENVIRONMENT=dev
 
 # Copy standalone output from builder
 COPY --from=builder /app/.next/standalone ./
