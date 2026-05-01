@@ -20,9 +20,14 @@ npm run dev     # http://localhost:3003
 
 The dev server proxies `/api/v1/*` requests to the analytics-agent backend via `next.config.ts` rewrites.
 
-Set `ANALYTICS_AGENT_URL` to override the default backend URL (defaults to `http://analytics-agent:8000` for Docker).
+## Required runtime env vars
 
-Set `ENVIRONMENT` (one of `dev` | `staging` | `prod`; defaults to `dev`) — the dashboard stamps this on every outbound call to the agent as `X-Environment`. The agent's auth dependency rejects requests whose `X-Environment` doesn't match its own (L3 strict environment isolation, required from SDK 0.6.0).
+- `ENVIRONMENT` — one of `dev` | `staging` | `prod`. Stamped on every backend call as `X-Environment`. The agent rejects mismatches with 403.
+- `REGISTRY_URL` — service registry URL (defaults to `http://ai-registry:8090` in the Docker image; override for staging/prod). The frontend looks up `analytics-agent` here at request time. If the registry is unreachable, the chat route returns 503 with a clear error.
+- `INTERNAL_API_KEY` — Bearer token forwarded to the analytics-agent. Required.
+- `AUTH0_*` — see `lib/auth0.ts` for the full set.
+
+`ANALYTICS_AGENT_URL` is no longer read at runtime; service discovery happens via the registry. The Dockerfile keeps it as a build-time placeholder for legacy compatibility.
 
 ## Docker
 

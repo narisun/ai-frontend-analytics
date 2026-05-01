@@ -1,49 +1,67 @@
 /**
  * Streaming proxy to the analytics-agent backend.
  *
- * Next.js rewrites() buffer full responses, breaking SSE/streaming.
- * This route handler pipes the agent response as a ReadableStream,
- * preserving real-time token delivery for the Data Stream Protocol.
- *
  * Auth flow:
- *   1. Auth0 middleware has already validated the user session (cookie)
+ *   1. Auth0 middleware validated the user session (cookie)
  *   2. This route extracts user identity from the session
- *   3. Forwards X-User-Email and X-User-Role headers to the agent
- *   4. Agent propagates user_role to MCP tools → OPA for authorization
+ *   3. Looks up `analytics-agent` URL from the platform registry
+ *   4. Forwards X-User-Email, X-User-Role, X-Environment, Bearer to the agent
  */
 import { auth0 } from "@/lib/auth0";
+import { getConfig } from "@/lib/config";
+import {
+  lookupService,
+  RegistryUnreachable,
+  ServiceNotFound,
+} from "@/lib/registry-client";
 
-const AGENT_URL = process.env.ANALYTICS_AGENT_URL || "http://analytics-agent:8000";
 const REQUEST_TIMEOUT_MS = 120_000;
 
-// L3 environment isolation. Stamped on every internal HTTP call so the
-// analytics-agent's auth dependency (and any downstream MCP) accepts the
-// request. Mismatch with the backend's own ENVIRONMENT returns 403.
-// Required from SDK 0.6.0 onward.
-const ENVIRONMENT = process.env.ENVIRONMENT || "dev";
-
 export async function POST(req: Request) {
+  const config = getConfig();
+
   // Extract authenticated user from Auth0 session
   const session = await auth0.getSession();
   const userEmail = session?.user?.email || "anonymous";
-  // Auth0 custom claim namespace — set via Auth0 Action (see docs/DEPLOYMENT.md)
   const userRole =
     session?.user?.["https://enterprise-ai/role"] ||
     session?.user?.role ||
     "analyst";
 
+  // Discover the agent URL via registry (registry-driven topology).
+  let agentUrl: string;
+  try {
+    agentUrl = await lookupService("analytics-agent");
+  } catch (err) {
+    if (err instanceof ServiceNotFound) {
+      return new Response(
+        JSON.stringify({
+          error: "Service unavailable",
+          detail: "analytics-agent is not registered with the platform registry.",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (err instanceof RegistryUnreachable) {
+      return new Response(
+        JSON.stringify({
+          error: "Service registry unreachable",
+          detail: (err as Error).message,
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    throw err;
+  }
+
   const body = await req.json();
 
-  const agentResponse = await fetch(`${AGENT_URL}/api/v1/analytics/chat`, {
+  const agentResponse = await fetch(`${agentUrl.replace(/\/$/, "")}/api/v1/analytics/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(process.env.INTERNAL_API_KEY && {
-        Authorization: `Bearer ${process.env.INTERNAL_API_KEY}`,
-      }),
-      // L3 strict environment isolation
-      "X-Environment": ENVIRONMENT,
-      // Forward authenticated user identity to the agent
+      Authorization: `Bearer ${config.internalApiKey}`,
+      "X-Environment": config.environment,
       "X-User-Email": userEmail,
       "X-User-Role": userRole,
     },
@@ -52,7 +70,6 @@ export async function POST(req: Request) {
   });
 
   if (!agentResponse.ok) {
-    // Forward the upstream error body for debugging visibility
     const errorBody = await agentResponse.text().catch(() => "");
     return new Response(
       JSON.stringify({

@@ -31,6 +31,8 @@ ENV ANALYTICS_AGENT_URL=http://analytics-agent:8000
 # L3 strict environment isolation — stamped on every backend call.
 # Override at deploy time (dev | staging | prod).
 ENV ENVIRONMENT=dev
+# Service registry URL — replaces ANALYTICS_AGENT_URL.
+ENV REGISTRY_URL=http://ai-registry:8090
 
 # Copy standalone output from builder
 COPY --from=builder /app/.next/standalone ./
